@@ -4,7 +4,7 @@ import { isAdmin } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const PUBLIC_ID = "portfolio/resume";
+const PUBLIC_ID = "portfolio/resume.pdf";
 const cloud = () => process.env.CLOUDINARY_CLOUD_NAME;
 const key = () => process.env.CLOUDINARY_API_KEY;
 const secret = () => process.env.CLOUDINARY_API_SECRET;
