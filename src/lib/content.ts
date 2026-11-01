@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { projects as defaultProjects, type Project } from "@/data/projects";
+import { cloudinaryConfigured, readCloudinaryJson, writeCloudinaryJson } from "@/lib/cloudinary-store";
 
 export type GalleryItem = {
   id: string;
@@ -10,7 +11,6 @@ export type GalleryItem = {
 };
 
 type StoredProject = Project & { source: "admin" };
-
 type GalleryStore = { items: GalleryItem[] };
 type ProjectStore = { items: StoredProject[] };
 
@@ -18,21 +18,26 @@ const contentDir = path.join(process.cwd(), "content");
 const galleryFile = path.join(contentDir, "gallery.json");
 const projectsFile = path.join(contentDir, "projects.json");
 
-async function readJson<T>(file: string, fallback: T): Promise<T> {
-  try {
-    return JSON.parse(await readFile(file, "utf8")) as T;
-  } catch {
-    return fallback;
-  }
+async function readLocalJson<T>(file: string, fallback: T): Promise<T> {
+  try { return JSON.parse(await readFile(file, "utf8")) as T; } catch { return fallback; }
 }
 
-async function writeJson<T>(file: string, value: T) {
+async function writeJson<T>(file: string, cloudId: string, value: T) {
+  if (cloudinaryConfigured()) {
+    await writeCloudinaryJson(cloudId, value);
+    return;
+  }
+  if (process.env.VERCEL) {
+    throw new Error("Persistent storage is not configured. Add the Cloudinary environment variables in Vercel.");
+  }
   await mkdir(contentDir, { recursive: true });
   await writeFile(file, JSON.stringify(value, null, 2), "utf8");
 }
 
 export async function getAdminProjects(): Promise<StoredProject[]> {
-  const store = await readJson<ProjectStore>(projectsFile, { items: [] });
+  const store = cloudinaryConfigured()
+    ? await readCloudinaryJson<ProjectStore>("portfolio/projects.json", { items: [] })
+    : await readLocalJson<ProjectStore>(projectsFile, { items: [] });
   return store.items;
 }
 
@@ -47,17 +52,19 @@ export async function getProject(slug: string): Promise<Project | undefined> {
 export async function addProject(project: Omit<StoredProject, "source">) {
   const items = await getAdminProjects();
   const stored = { ...project, source: "admin" as const };
-  await writeJson<ProjectStore>(projectsFile, { items: [stored, ...items] });
+  await writeJson<ProjectStore>(projectsFile, "portfolio/projects.json", { items: [stored, ...items] });
   return stored;
 }
 
 export async function getGallery(): Promise<GalleryItem[]> {
-  const store = await readJson<GalleryStore>(galleryFile, { items: [] });
+  const store = cloudinaryConfigured()
+    ? await readCloudinaryJson<GalleryStore>("portfolio/gallery.json", { items: [] })
+    : await readLocalJson<GalleryStore>(galleryFile, { items: [] });
   return store.items;
 }
 
 export async function addGalleryItems(items: GalleryItem[]) {
   const existing = await getGallery();
-  await writeJson<GalleryStore>(galleryFile, { items: [...items, ...existing] });
+  await writeJson<GalleryStore>(galleryFile, "portfolio/gallery.json", { items: [...items, ...existing] });
   return items;
 }
